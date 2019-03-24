@@ -1,0 +1,138 @@
+---
+title: "Incarceration Trends"
+author: "Colin Cozad"
+date: "3/21/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library("ggthemes")
+library("mapproj")
+```
+
+
+
+```{r}
+prison_summary <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-01-22/prison_summary.csv")
+```
+
+```{r}
+prison_summary %>%
+  count(pop_category)
+
+prison_summary %>% 
+  filter(pop_category %in% c("Asian", "Black", "Latino", "Native American", "White")) %>%
+  ggplot(aes(x=year, y = rate_per_100000, color = urbanicity))+
+      labs(fill = " ", x = "Year",y = "Rate of prison population per 100,000 people",
+       title = "Prison data (1983-2015): Race and Prison Population", color = "Urbanicity",
+       caption = "Note: Asian, Latino, and Native American were categorized as Other until 1990 ")+
+  geom_line()+
+  facet_wrap(~ pop_category)
+ggsave("race_summary.png", width = 20,height =10, units = "cm" )
+
+prison_summary %>% 
+  filter(pop_category %in% c("Male", "Female")) %>%
+  ggplot(aes(x=year, y = rate_per_100000, color = urbanicity))+
+  geom_line()+
+    labs(fill = " ", x = "Year",y = "Rate of prison population per 100,000 people",
+       title = "Prison data (1983-2015): Gender and Prison Population", color = "Urbanicity")+
+  facet_wrap(~ pop_category)+
+  theme(legend.position="right",axis.line = element_line(colour = "black"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+prison_summary$year_fct <- as.factor(prison_summary$year)
+prison_summary %>% 
+  group_by(year_fct) %>% 
+  ggplot(aes(year_fct,rate_per_100000, fill = urbanicity))+ geom_col()+ 
+  scale_fill_brewer(palette = "Set1")+
+  labs(fill = "Urbanicity", x = "Year",y = "Rate of prison population per 100,000 people",
+       title = "Urbanicity and Prison Population (1983-2015)")+
+  expand_limits(y = 6000)+
+  theme(legend.position = "right",
+        axis.line = element_line(color = "black"),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 60,vjust = 0.4, color = "black"))
+ggsave("urbanicity_summary.png", width = 20,height =10, units = "cm" )
+```
+
+
+```{r}
+prison_population <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-01-22/prison_population.csv")
+```
+
+```{r}
+
+prison_population_2013 <- prison_population %>%
+  filter(year == "2013") %>%
+  group_by(state) %>%
+  filter(any(!is.na(prison_population))) 
+
+#Looking at 2013, and dropping 12 states with missing prison population data
+
+prison_population_2013 %>%
+  filter(pop_category == "Total") %>% 
+  mutate(region = str_to_lower(state.name[match(state, state.abb)]),
+         subregion = str_remove(str_to_lower(county_name), " county| parish| city"),
+         incarceration_rate = prison_population / population) %>% 
+  filter(incarceration_rate <.05) %>%
+  right_join(map_data("county"), by = c("region", "subregion")) %>% 
+  ggplot(aes(long, lat, group = group, fill = incarceration_rate)) +
+  geom_polygon()+
+      labs(fill = "Incarceration Rate %",
+       title = "Incarceration Rate by County (2013)")+
+  theme_map() +
+  coord_map()+
+  scale_fill_gradientn(colors= c("blue","orange","red"), labels= scales::percent_format())+
+  theme(legend.position="right", plot.title = element_text(hjust = 0.5))
+ggsave("general_map.png", width = 20,height =10, units = "cm" )
+
+
+#McPherson County is a huge outlier and skewing the rest of the gradient
+```
+
+```{r}
+prison_population_2013 %>%
+  mutate(region = str_to_lower(state.name[match(state, state.abb)]),
+         subregion = str_remove(str_to_lower(county_name), " county| parish| city"),
+         incarceration_rate = prison_population / population) %>% 
+  filter(incarceration_rate <.05) %>%
+  filter(pop_category %in% c("Asian", "Black", "Latino", "Native American", "White", "Total")) %>%
+  left_join(map_data("county"), by = c("region", "subregion")) %>% 
+  ggplot(aes(long, lat, group = group, fill = incarceration_rate)) +
+    borders("state", fill = "lightgrey")+
+  facet_wrap(~ pop_category) +
+   labs(fill = "Incarceration Rate %",
+       title = "Incarceration Rate by County and Race (2013)")+
+  geom_polygon() +
+  theme_map() +
+  coord_map()+
+  borders("state")+
+  scale_fill_gradientn(colors= c("blue","orange","red"), labels= scales::percent_format())+
+  theme(legend.position="right", plot.title = element_text(hjust = 0.5))
+ggsave("race_map.png", width = 20,height =10, units = "cm" )
+```
+
+```{r}
+prison_population_2013 %>%
+  mutate(region = str_to_lower(state.name[match(state, state.abb)]),
+         subregion = str_remove(str_to_lower(county_name), " county| parish| city"),
+         incarceration_rate = prison_population / population) %>% 
+  filter(incarceration_rate <.07) %>%
+  filter(pop_category %in% c("Male", "Female")) %>%
+  left_join(map_data("county"), by = c("region", "subregion")) %>% 
+  ggplot(aes(long, lat, group = group, fill = incarceration_rate)) +
+  theme_map() +
+  coord_map()+
+  borders("state", fill = "lightgrey")+
+   labs(fill = "Incarceration Rate %",
+       title = "Incarceration Rate by County and Gender (2013)")+
+    facet_wrap(~ pop_category) +
+  geom_polygon() +
+  scale_fill_gradientn(colors= c("blue","orange","red"), labels= scales::percent_format())+
+  theme(legend.position="right", plot.title = element_text(hjust = 0.5))
+```
+
